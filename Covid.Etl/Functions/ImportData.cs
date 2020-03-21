@@ -1,35 +1,57 @@
-using System;
-using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using Covid.Etl.Services;
+using Microsoft.Extensions.Options;
+using Covid.Data.Models;
+using System.Linq;
+using AutoMapper.QueryableExtensions;
+using AutoMapper;
 
 namespace Covid.Etl.Functions
 {
-    public static class ImportData
+    public class ImportData
     {
+        private readonly IOptions<ConfigurationItem> configuration;
+        private readonly IDataRetriever dataRetriever;
+        private readonly IRepository repository;
+        private readonly IMapper mapper;
+
+        public ImportData(IOptions<ConfigurationItem> configuration, IDataRetriever dataRetriever, IRepository repository, IMapper mapper)
+        {
+            this.configuration = configuration;
+            this.dataRetriever = dataRetriever;
+            this.repository = repository;
+            this.mapper = mapper;
+        }
+
         [FunctionName("ImportData")]
-        public static async Task<IActionResult> Run(
+        public async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
             ILogger log)
         {
-            log.LogInformation("C# HTTP trigger function processed a request.");
+            // dead count
+            var deadRawData = await dataRetriever
+                .TransformRecordsAync(configuration.Value.DeadSource);
+            var deadRecords = mapper.ProjectTo<DeadCount>(deadRawData.AsQueryable());
+            await repository.BulkInsert(deadRecords.ToList());
 
-            string name = req.Query["name"];
+            // confirmed count
+            var confirmedRawData = await dataRetriever
+                .TransformRecordsAync(configuration.Value.ConfirmedSource);
+            var confirmedRecords = mapper.ProjectTo<ConfirmedCount>(confirmedRawData.AsQueryable());
+            await repository.BulkInsert(confirmedRecords.ToList());
 
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            name = name ?? data?.name;
+            // recovered count
+            var recoveredRawData = await dataRetriever
+                .TransformRecordsAync(configuration.Value.RecoveredSource);
+            var recoveredRecords = mapper.ProjectTo<RecoveredCount>(recoveredRawData.AsQueryable());
+            await repository.BulkInsert(recoveredRecords.ToList());
 
-            string responseMessage = string.IsNullOrEmpty(name)
-                ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-                : $"Hello, {name}. This HTTP triggered function executed successfully.";
-
-            return new OkObjectResult(responseMessage);
+            return new OkObjectResult(new { DeclaredType = deadRawData.Count(), Confirmed = confirmedRawData.Count(), Recovered = recoveredRawData.Count()});
         }
     }
 }
