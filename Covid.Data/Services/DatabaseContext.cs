@@ -5,9 +5,9 @@ namespace Covid.Data.Services
 {
     public class DatabaseContext : DbContext
     {
-        public DbSet<DeadCount> DeadCounts { get; set; }
-        public DbSet<RecoveredCount> RecoveredCounts { get; set; }
-        public DbSet<ConfirmedCount> ConfirmedCounts { get; set; }
+
+        public DbSet<RawData> RawData { get; set; }
+        public DbSet<Status> Status { get; set; }
 
         public DatabaseContext(DbContextOptions<DatabaseContext> options)
         : base(options)
@@ -17,15 +17,28 @@ namespace Covid.Data.Services
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<DeadCount>()
-                .ToTable("TBL_DEAD")
-                .HasKey(x => x.Id);
-            modelBuilder.Entity<RecoveredCount>()
-                .ToTable("TBL_RECOVERED")
-                .HasKey(x => x.Id);
-            modelBuilder.Entity<ConfirmedCount>()
-                .ToTable("TBL_CONFIRMED")
-                .HasKey(x => x.Id);
+            modelBuilder.Entity<RawData>()
+            .ToTable("TBL_RAW_DATA")
+            .HasKey(x => x.Id);
+            
+            modelBuilder.Entity<Status>()
+            .ToTable("TBL_IMPORT_STATUS")
+            .HasKey(x => x.Id);
+
+            modelBuilder.Entity<RawData>()
+            .HasIndex(x => x.Country)
+            .IsClustered(false)
+            .HasName("IX_RAW_DATA_COUNTRY");
+
+            modelBuilder.Entity<RawData>()
+            .HasIndex(x => x.State)
+            .IsClustered(false)
+            .HasName("IX_RAW_DATA_STATE");
+
+            modelBuilder.Entity<RawData>()
+            .HasIndex(x => x.Date)
+            .IsClustered(false)
+            .HasName("IX_RAW_DATA_DATE");
 
         }
     }

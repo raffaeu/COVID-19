@@ -10,6 +10,7 @@ using Covid.Data.Models;
 using System.Linq;
 using AutoMapper.QueryableExtensions;
 using AutoMapper;
+using System;
 
 namespace Covid.Etl.Functions
 {
@@ -30,28 +31,31 @@ namespace Covid.Etl.Functions
 
         [FunctionName("ImportData")]
         public async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
             ILogger log)
         {
-            // dead count
-            var deadRawData = await dataRetriever
-                .TransformRecordsAync(configuration.Value.DeadSource);
-            var deadRecords = mapper.ProjectTo<DeadCount>(deadRawData.AsQueryable());
-            await repository.BulkInsert(deadRecords.ToList());
+            var date = new DateTime(2020, 01, 21);
+            var count = 0;
+            if (repository.Query<RawData>().Any())
+            {
+                date = repository.Query<RawData>().Max(x => x.Date);
+            } 
 
-            // confirmed count
-            var confirmedRawData = await dataRetriever
-                .TransformRecordsAync(configuration.Value.ConfirmedSource);
-            var confirmedRecords = mapper.ProjectTo<ConfirmedCount>(confirmedRawData.AsQueryable());
-            await repository.BulkInsert(confirmedRecords.ToList());
+            var daysDiff = (DateTime.UtcNow - date).TotalDays;
 
-            // recovered count
-            var recoveredRawData = await dataRetriever
-                .TransformRecordsAync(configuration.Value.RecoveredSource);
-            var recoveredRecords = mapper.ProjectTo<RecoveredCount>(recoveredRawData.AsQueryable());
-            await repository.BulkInsert(recoveredRecords.ToList());
+            for(var i = 1; i < daysDiff; i++)
+            {
+                log.LogInformation($"Importing data for {date.AddDays(i)}");
+                var rawData = await dataRetriever.TransformRecordsAync(date.AddDays(i));
+                await repository.BulkInsert(rawData.ToList());
+                count += rawData.Count();
+            }
 
-            return new OkObjectResult(new { DeclaredType = deadRawData.Count(), Confirmed = confirmedRawData.Count(), Recovered = recoveredRawData.Count()});
+            var status = Status.Build(count);
+
+            status = await repository.Insert(status);
+
+            return new OkObjectResult(status);
         }
     }
 }

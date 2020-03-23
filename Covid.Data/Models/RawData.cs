@@ -9,6 +9,8 @@ namespace Covid.Data.Models
         public string Latitude { get; set; }
         public string Longitude { get; set; }
         public DateTime Date { get; set; }
-        public int Count { get; set; }
+        public int ConfirmedCount { get; set; }
+        public int RecoveredCount { get; set; }
+        public int DeadCount { get; set; }
     }
 }

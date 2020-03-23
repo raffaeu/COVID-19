@@ -7,9 +7,7 @@ namespace Covid.Etl.Services
     {
         public MapperProfile()
         {
-            CreateMap<RawData, DeadCount>();
-            CreateMap<RawData, ConfirmedCount>();
-            CreateMap<RawData, RecoveredCount>();
+
         }
     }
 }

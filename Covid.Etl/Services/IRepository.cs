@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Covid.Data.Models;
@@ -12,6 +13,8 @@ namespace Covid.Etl.Services
     public interface IRepository
     {
         Task BulkInsert<TEntity>(IList<TEntity> records) where TEntity : BaseItem;
+        IQueryable<TEntity> Query<TEntity>() where TEntity : BaseItem;
+        Task<TEntity> Insert<TEntity>(TEntity entity) where TEntity : BaseItem;
     }
 
     public class Repository : IRepository
@@ -28,15 +31,24 @@ namespace Covid.Etl.Services
         {
             var connection = context.Database.GetDbConnection();
             await connection.OpenAsync();
-            await context.TruncateAsync<TEntity>();
 
-            logger.LogInformation($"Starting BULK Import {records.Count}");
             await context.BulkInsertAsync(records, new BulkConfig{
                 BatchSize = 6000
             }, (count) => logger.LogInformation($"Inserted {count:P2} records"), default(CancellationToken));
-            logger.LogInformation($"BULK Import completed  {records.Count}");
 
             await connection.CloseAsync();
+        }
+
+        public async  Task<TEntity> Insert<TEntity>(TEntity entity) where TEntity : BaseItem
+        {
+            context.Set<TEntity>().Add(entity);
+            await context.SaveChangesAsync();
+            return entity;
+        }
+
+        public IQueryable<TEntity> Query<TEntity>() where TEntity : BaseItem
+        {
+            return context.Set<TEntity>();
         }
     }
 }

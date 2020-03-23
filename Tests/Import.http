@@ -1,0 +1,4 @@
+# Retrieve Import
+GET http://localhost:7071/api/ImportData
+Accept: application/json
+Content-Type: application/json

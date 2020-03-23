@@ -6,46 +6,57 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Covid.Data.Models;
 using CsvHelper;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Covid.Etl.Services
 {
     public class DataRetriever : IDataRetriever
     {
-        public async Task<IEnumerable<RawData>> TransformRecordsAync(string fileSource)
-        {
-            var content = await DownloadFileAsync(fileSource);
-            var records = new List<RawData>();
-            using (var reader = new StreamReader(new MemoryStream(content)))
-            using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-            {
-                csv.Read();
-                csv.ReadHeader();
-                string[] headerRow = csv.Context.HeaderRecord;
+        private readonly IOptions<ConfigurationItem> options;
+        private readonly ILogger<DataRetriever> logger;
 
-                while (csv.Read())
+        public DataRetriever(IOptions<ConfigurationItem> options, ILogger<DataRetriever> logger)
+        {
+            this.options = options;
+            this.logger = logger;
+        }
+        public async Task<IEnumerable<RawData>> TransformRecordsAync(DateTime date)
+        {
+            var filename = string.Format(options.Value.DailyReport, date.ToString("MM-dd-yyyy"));
+            var records = new List<RawData>();
+            try 
+            {
+                var content = await DownloadFileAsync(filename);
+                using (var reader = new StreamReader(new MemoryStream(content)))
+                using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
                 {
-                    for (var i = 0; i < 180; i++)
+                    csv.Read();
+                    csv.ReadHeader();
+                    string[] headerRow = csv.Context.HeaderRecord;
+
+                    while (csv.Read())
                     {
-                        var date = DateTime.UtcNow.AddDays(-60);
-                        date = date.AddDays(i);
-                        object count = null;
-                        if (csv.TryGetField(typeof(int), date.ToString("M/d/yy"), out count))
+                        var record = new RawData
                         {
-                            var record = new RawData
-                            {
-                                Id = Guid.NewGuid(),
-                                State = csv.GetField(0),
-                                Country = csv.GetField(1),
-                                Latitude = csv.GetField(2),
-                                Longitude = csv.GetField(3),
-                                Date = date,
-                                Count = (int)count
-                            };
-                            records.Add(record);
-                        }
+                            Id = Guid.NewGuid(),
+                            State = csv.GetField(0),
+                            Country = csv.GetField(1),
+                            Date = date,
+                            ConfirmedCount = Convert.ToInt32(csv.GetField(3)),
+                            DeadCount = Convert.ToInt32(csv.GetField(4)),
+                            RecoveredCount = Convert.ToInt32(csv.GetField(5))
+                        };
+                        records.Add(record);
+
                     }
                 }
+            } 
+            catch(Exception ex)
+            {
+                logger.LogError(ex, $"File not found for {date}");
             }
+
             return records;
         }
 
@@ -63,7 +74,7 @@ namespace Covid.Etl.Services
 
                 }
             }
-            return null;
+            throw new Exception("File not found or corrupted");
         }
 
     }
